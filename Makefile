@@ -2,7 +2,7 @@ include ./build_rule.mk
 
 TARGET = lidar
 URG_LIB = /usr/local/lib/liburg_c.a
-CFLAGS = -O2 $(INCLUDES) -I/usr/local/include/urg_c
+CFLAGS = -O2 -w $(INCLUDES) -I/usr/local/include/urg_c
 LDLIBS = -lm
 
 all : $(TARGET)
