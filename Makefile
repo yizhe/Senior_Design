@@ -8,7 +8,7 @@ LDLIBS = -lm
 all : $(TARGET)
 
 clean :
-	$(RM) *.o $(TARGET) *.exe
+	$(RM) *.o $(TARGET) 
 
 $(TARGET) : lidar.o $(URG_LIB)
             
