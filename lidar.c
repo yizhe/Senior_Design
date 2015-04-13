@@ -41,7 +41,7 @@ void update_occ (long* data, int data_size, int debug){
           occ_map[i][j] = OCC_CAP;
       }
       else{
-        occ_map[i][j] -= 3;
+        occ_map[i][j] -= 1;
         if (occ_map[i][j] < 0)
           occ_map[i][j] = 0;
       }
