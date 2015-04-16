@@ -3,6 +3,8 @@
 #include "urg_connection.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #define RANGE 120
 #define TOTALRANGE 270
@@ -66,19 +68,43 @@ void print_occ(){
   }
 }
 
+int init_serial(){
+  const char serial_device[] = "/dev/ttyACM0";
+  struct termios options;
+  int fd = open(serial_device, O_RDWR | O_NOCTTY | O_NDELAY);
+  if (fd == -1){
+    return fd;
+  }
+  //fcntl(fd, F_SETFL, 0);
+  tcgetattr(fd, &options);
+  cfsetispeed(&options, B115200);
+  cfsetospeed(&options, B115200);
+  options.c_cflag |= (CLOCAL | CREAD);
+  tcsetattr(fd, TCSANOW, &options);
+  return fd;
+}
+
 int main(void){
   urg_t* urg = (urg_t*)malloc(sizeof(urg_t));
-  int i,ret;
+  int i,ret, fd;
   long *rawdata;
   int rawdata_size;
   //connect and open device 
   //device is mounted on /dev/ttyACM0
-  const char connect_device[] = "/dev/ttyACM0";
+  const char lidar_device[] = "/dev/ttyACM1";
   const long connect_baudrate = 115200;
-  if (urg_open(urg, URG_SERIAL,connect_device, connect_baudrate) < 0){
-    printf("Cannot Open Device!\n");
+  
+  if (urg_open(urg, URG_SERIAL,lidar_device, connect_baudrate) < 0){
+    printf("Cannot Open Lidar Device!\n");
     return 1;
   }
+  fd = init_serial();
+  if (fd == -1){
+    printf("Cannot Open Serial!\n");
+    return 1;
+  }
+  if(write(fd, "200\n", 6) < 0)
+    printf("write failed!");  
   initiate_occ();
 
   rawdata = (long*)malloc(sizeof(long) *urg_max_data_size(urg));
@@ -88,8 +114,7 @@ int main(void){
   // error code
   while (1){
     rawdata_size = urg_get_distance(urg, rawdata, NULL);
-    printf("Total data points: %d\n",rawdata_size);
-    update_occ(rawdata,rawdata_size,1);
+    update_occ(rawdata,rawdata_size,0);
   }
   urg_close(urg);
   free(rawdata);
