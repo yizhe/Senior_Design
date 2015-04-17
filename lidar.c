@@ -9,7 +9,7 @@
 #define RANGE 120
 #define TOTALRANGE 270
 #define NUM_DIR 24 
-#define NUM_DIST 10
+#define NUM_DIST 9
 #define OCC_CAP 20
 //occupancy map for the environment, resolution is 10 deg * 1meter 
 int occ_map[NUM_DIR][NUM_DIST];
@@ -57,6 +57,40 @@ void update_occ (long* data, int data_size, int debug){
   free(avg_data);
 }
 
+int output_occ(int limit){
+  int* close_data = (int*)malloc(sizeof(int)*NUM_DIR);
+  int i,j,start=-1,end=-1,min=NUM_DIST; 
+  for (i=0; i < NUM_DIR; ++i){
+    close_data[i] = 0;
+    for (j=0; j < NUM_DIST; ++j){
+      if (occ_map[i][j] == 20)
+        break;
+      else
+        close_data[i] += 1;
+    } 
+  }
+  for (i=0; i<NUM_DIR; ++i){
+    if (close_data[i] < min) 
+      min = close_data[i];
+  }
+  if (min <= limit){
+    for (i=0; i<NUM_DIR; ++i){
+      if (close_data[i] == min){
+        if (start < 0){
+          start = i;
+          end = i;
+        }else
+          end = i;
+      }else{
+        if (start > 0)
+          break;
+      }
+    }
+  }
+  free(close_data);
+  return (start+end)/2;
+}
+
 void print_occ(){
   int i,j;
   for (i=0; i<NUM_DIR; ++i){
@@ -69,13 +103,12 @@ void print_occ(){
 }
 
 int init_serial(){
-  const char serial_device[] = "/dev/ttyACM2";
+  const char serial_device[] = "/dev/ttyACM1";
   struct termios options;
   int fd = open(serial_device, O_RDWR | O_NOCTTY | O_NDELAY);
   if (fd == -1){
     return fd;
   }
-  //fcntl(fd, F_SETFL, 0);
   tcgetattr(fd, &options);
   cfsetispeed(&options, B9600);
   cfsetospeed(&options, B9600);
@@ -86,7 +119,7 @@ int init_serial(){
 
 int main(void){
   urg_t* urg = (urg_t*)malloc(sizeof(urg_t));
-  int i,ret, fd;
+  int i,ret, fd, output, direction;
   FILE *file;
   long *rawdata;
   int rawdata_size;
@@ -94,38 +127,34 @@ int main(void){
   //device is mounted on /dev/ttyACM0
   const char lidar_device[] = "/dev/ttyACM0";
   const long connect_baudrate = 115200;
-  /* 
+   
   if (urg_open(urg, URG_SERIAL,lidar_device, connect_baudrate) < 0){
     printf("Cannot Open Lidar Device!\n");
     return 1;
   }
-  */
+  
   fd = init_serial();
   if (fd == -1){
     printf("Cannot Open Serial!\n");
     return 1;
   }
-  /*
-  system("mode com1: baud=9600 parity=n data=8 stop=1 to=off xon=off");
-  printf("position 0!\n");
+ 
   
-  file = fopen("/dev/ttyACM2", "w");
-  fprintf(file,"%d\n",5);
-  printf("Successful here!!\n");
- */ 
-  if(write(fd, "200\n", 4) < 0)
-    printf("write failed!");  
   initiate_occ();
-  /*
   rawdata = (long*)malloc(sizeof(long) *urg_max_data_size(urg));
   ret = urg_start_measurement(urg, URG_DISTANCE, 0, 0);
   while (1){
-    //printf("position 4!\n");
     rawdata_size = urg_get_distance(urg, rawdata, NULL);
-    update_occ(rawdata,rawdata_size,0);
+    update_occ(rawdata,rawdata_size,1);
+    output = output_occ(2);
+    if (output > 0){
+      direction =RANGE/NUM_DIR*output - RANGE/2;
+      if(write(fd, "200\n", 4) < 0)
+        printf("write failed!");  
+      printf("Final Direction: %d\n", direction);  
+    } 
   }
   urg_close(urg);
   free(rawdata);
-  */
   return 0;
 }
