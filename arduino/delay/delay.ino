@@ -4,7 +4,7 @@ int interval = 200;
 int state[] = {LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW, LOW};
 int pin[] = {22, 25, 29, 33, 37, 41, 45, 49, 53};
 String str;
-int index = 0;
+int ind = 0;
 void setup() {
   Serial.begin(9600);
   pinMode(23, INPUT);
@@ -18,12 +18,12 @@ void loop() {
   if (Serial.available() > 0){
     str =  Serial.readStringUntil('\n');
     interval = 0;
-    index = 0;
+    ind = 0;
     Serial.println("Received: " + str);
     //Serial.read();
-    while(str[index] != '\0'){
-      interval = interval*10+str[index]-48;
-      ++index;
+    while(str[ind] != '\0'){
+      interval = interval*10+str[ind]-48;
+      ind = ind+1;
     } 
     Serial.println(interval);
     state[0] = !state[0];
