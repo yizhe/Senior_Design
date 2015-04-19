@@ -8,9 +8,12 @@
 
 #define RANGE 120
 #define TOTALRANGE 270
-#define NUM_DIR 24 
+#define NUM_DIR 60 
 #define NUM_DIST 9
-#define OCC_CAP 20
+#define OCC_CAP 5
+#define ARMRANGE 300
+#define ARMRESOLUTION 1024
+
 //occupancy map for the environment, resolution is 10 deg * 1meter 
 int occ_map[NUM_DIR][NUM_DIST];
 
@@ -29,6 +32,10 @@ void update_occ (long* data, int data_size, int debug){
   int start_ind = data_size/TOTALRANGE*descard; 
   int end_ind = data_size - start_ind;
   int range = (end_ind - start_ind)/NUM_DIR;
+  for (i=start_ind; i<=end_ind; ++i){
+    if (data[i] < 200)
+      data[i] = NUM_DIST*500;
+  } 
   for (i=0; i<NUM_DIR; ++i){ 
     partial_sum = 0;
     for (j=0; j<range; ++j)
@@ -63,7 +70,7 @@ int output_occ(int limit){
   for (i=0; i < NUM_DIR; ++i){
     close_data[i] = 0;
     for (j=0; j < NUM_DIST; ++j){
-      if (occ_map[i][j] == 20)
+      if (occ_map[i][j] == OCC_CAP)
         break;
       else
         close_data[i] += 1;
@@ -114,7 +121,23 @@ int init_serial(){
   cfsetospeed(&options, B9600);
   options.c_cflag |= (CLOCAL | CREAD);
   tcsetattr(fd, TCSANOW, &options);
+  if (write(fd, "Ss 1 520Xm 200X", 9) < 0)
+    printf("write failed!");  
+
+
   return fd;
+}
+
+void move_arm(int fd, int degree){
+  char* str = (char*)malloc(sizeof(char)*10);
+  if (degree < -ARMRANGE/2 || degree > ARMRANGE/2)
+    printf("%d is out of range!\n", degree);
+  int target = (degree + ARMRANGE/2)*(ARMRESOLUTION-1)/ARMRANGE;
+  int length = sprintf(str, "s 1 %dX", target);
+  printf("%s - %d\n",str,length);
+  if (write(fd, str, length) < 0)
+    printf("write failed!"); 
+  usleep(200000); 
 }
 
 int main(void){
@@ -138,8 +161,7 @@ int main(void){
     printf("Cannot Open Serial!\n");
     return 1;
   }
- 
-  
+    
   initiate_occ();
   rawdata = (long*)malloc(sizeof(long) *urg_max_data_size(urg));
   ret = urg_start_measurement(urg, URG_DISTANCE, 0, 0);
@@ -147,12 +169,14 @@ int main(void){
     rawdata_size = urg_get_distance(urg, rawdata, NULL);
     update_occ(rawdata,rawdata_size,1);
     output = output_occ(2);
-    if (output > 0){
-      direction =RANGE/NUM_DIR*output - RANGE/2;
-      if(write(fd, "200\n", 4) < 0)
-        printf("write failed!");  
-      printf("Final Direction: %d\n", direction);  
-    } 
+      if (output > 0){
+        direction =RANGE/NUM_DIR*output - RANGE/2;
+        printf("Final Direction: %d\n", direction);  
+        move_arm(fd, direction);
+      }
+      else{
+        move_arm(fd, 0);
+      }
   }
   urg_close(urg);
   free(rawdata);
