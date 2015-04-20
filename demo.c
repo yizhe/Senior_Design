@@ -8,11 +8,12 @@
 
 #define RANGE 120
 #define TOTALRANGE 270
-#define NUM_DIR 60 
+#define NUM_DIR 30 
 #define NUM_DIST 9
 #define OCC_CAP 5
 #define ARMRANGE 300
 #define ARMRESOLUTION 1024
+#define DISTUNIT 500
 
 //occupancy map for the environment, resolution is 10 deg * 1meter 
 int occ_map[NUM_DIR][NUM_DIST];
@@ -34,13 +35,13 @@ void update_occ (long* data, int data_size, int debug){
   int range = (end_ind - start_ind)/NUM_DIR;
   for (i=start_ind; i<=end_ind; ++i){
     if (data[i] < 200)
-      data[i] = NUM_DIST*500;
+      data[i] = NUM_DIST*DISTUNIT;
   } 
   for (i=0; i<NUM_DIR; ++i){ 
     partial_sum = 0;
     for (j=0; j<range; ++j)
       partial_sum += data[start_ind+i*range+j];
-    avg_data[i] = partial_sum/range/500;
+    avg_data[i] = partial_sum/range/DISTUNIT;
   }
   for (i=0; i<NUM_DIR; ++i){
     for (j=0; j<NUM_DIST; ++j){
@@ -64,7 +65,7 @@ void update_occ (long* data, int data_size, int debug){
   free(avg_data);
 }
 
-int output_occ(int limit){
+int output_occ(int limit, int* output_dir){
   int* close_data = (int*)malloc(sizeof(int)*NUM_DIR);
   int i,j,start=-1,end=-1,min=NUM_DIST; 
   for (i=0; i < NUM_DIR; ++i){
@@ -76,10 +77,14 @@ int output_occ(int limit){
         close_data[i] += 1;
     } 
   }
+  for (i=0; i<NUM_DIR; ++i)
+    printf("%d ",close_data[i]);
+  printf("\n");
   for (i=0; i<NUM_DIR; ++i){
     if (close_data[i] < min) 
       min = close_data[i];
   }
+  printf("min vs limit: %d %d\n", min, limit);
   if (min <= limit){
     for (i=0; i<NUM_DIR; ++i){
       if (close_data[i] == min){
@@ -95,7 +100,11 @@ int output_occ(int limit){
     }
   }
   free(close_data);
-  return (start+end)/2;
+  *output_dir = (start+end)/2;
+  if (min<=limit && end-start>0)
+    return min;
+  else
+    return -1;
 }
 
 void print_occ(){
@@ -109,8 +118,7 @@ void print_occ(){
   }
 }
 
-int init_serial(){
-  const char serial_device[] = "/dev/ttyACM1";
+int init_serial(char* serial_device){
   struct termios options;
   int fd = open(serial_device, O_RDWR | O_NOCTTY | O_NDELAY);
   if (fd == -1){
@@ -121,64 +129,95 @@ int init_serial(){
   cfsetospeed(&options, B9600);
   options.c_cflag |= (CLOCAL | CREAD);
   tcsetattr(fd, TCSANOW, &options);
-  if (write(fd, "Ss 1 520Xm 200X", 9) < 0)
+  if (write(fd, "Ss 1 520Xm 100X qX", 17) < 0)
     printf("write failed!");  
 
 
   return fd;
 }
 
-void move_arm(int fd, int degree){
-  char* str = (char*)malloc(sizeof(char)*10);
+void move_arm(int fd, int degree, int enable){
+  char* str = (char*)malloc(sizeof(char)*15);
+  int length;
   if (degree < -ARMRANGE/2 || degree > ARMRANGE/2)
     printf("%d is out of range!\n", degree);
   int target = (degree + ARMRANGE/2)*(ARMRESOLUTION-1)/ARMRANGE;
-  int length = sprintf(str, "s 1 %dX", target);
+  if (enable)  
+    length = sprintf(str, "s 1 %dXQX", target);
+  else
+    length = sprintf(str, "s 1 %dXqX", target);
   printf("%s - %d\n",str,length);
   if (write(fd, str, length) < 0)
     printf("write failed!"); 
-  usleep(200000); 
+  usleep(80000);  
 }
 
-int main(void){
+int main(int argc, char* argv[]){
   urg_t* urg = (urg_t*)malloc(sizeof(urg_t));
-  int i,ret, fd, output, direction;
-  FILE *file;
+  int lidar_num=0, serial_num=1, detect_bound=2, warning_bound=1,debug_on=0;
+  int i, fd, dist, dir, direction, rawdata_size;
   long *rawdata;
-  int rawdata_size;
-  //connect and open device 
-  //device is mounted on /dev/ttyACM0
-  const char lidar_device[] = "/dev/ttyACM0";
   const long connect_baudrate = 115200;
-   
+  char *lidar_device = (char*)malloc(sizeof(char)*15);
+  char *serial_device = (char*)malloc(sizeof(char)*15);
+  
+  if (argc > 1){
+    lidar_num = argv[1][0] - '0';
+    if (argc > 2){
+      serial_num = argv[2][0] - '0';
+      if (argc > 3){
+        detect_bound = argv[3][0] - '0';
+        if (argc > 4){
+          warning_bound = argv[4][0] - '0';
+          if (argc > 5){
+            debug_on = argv[5][0] - '0';
+          }
+        }
+      }
+    } 
+  }
+  printf("detect bound: %d, warning_bound: %d\n", detect_bound, warning_bound);
+  sprintf(lidar_device, "/dev/ttyACM%d", lidar_num);
+  sprintf(serial_device, "/dev/ttyACM%d", serial_num);
+  
+  //connect and open lidar device 
   if (urg_open(urg, URG_SERIAL,lidar_device, connect_baudrate) < 0){
     printf("Cannot Open Lidar Device!\n");
     return 1;
   }
-  
-  fd = init_serial();
+  //connect serial port 
+  fd = init_serial(serial_device);
   if (fd == -1){
     printf("Cannot Open Serial!\n");
     return 1;
   }
-    
+  //initialize measurement 
   initiate_occ();
   rawdata = (long*)malloc(sizeof(long) *urg_max_data_size(urg));
-  ret = urg_start_measurement(urg, URG_DISTANCE, 0, 0);
+  if(urg_start_measurement(urg, URG_DISTANCE, 0, 0) != 0){
+    printf("Cannot get measurements!\n");
+    return 1;
+  }
+
   while (1){
     rawdata_size = urg_get_distance(urg, rawdata, NULL);
-    update_occ(rawdata,rawdata_size,1);
-    output = output_occ(2);
-      if (output > 0){
-        direction =RANGE/NUM_DIR*output - RANGE/2;
-        printf("Final Direction: %d\n", direction);  
-        move_arm(fd, direction);
+    update_occ(rawdata, rawdata_size, debug_on);
+    dist = output_occ(detect_bound, &dir);
+      if (dist >= 0){
+        direction =RANGE/NUM_DIR*dir - RANGE/2;
+        printf("Final Direction: %d\n", direction); 
+        if (dist <= warning_bound)
+          move_arm(fd, direction, 1);
+        else 
+          move_arm(fd, direction, 0);
       }
       else{
-        move_arm(fd, 0);
+        move_arm(fd, 0, 0);
       }
   }
   urg_close(urg);
+  free(lidar_device);
+  free(serial_device);
   free(rawdata);
   return 0;
 }
