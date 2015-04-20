@@ -77,9 +77,6 @@ int output_occ(int limit, int* output_dir){
         close_data[i] += 1;
     } 
   }
-  for (i=0; i<NUM_DIR; ++i)
-    printf("%d ",close_data[i]);
-  printf("\n");
   for (i=0; i<NUM_DIR; ++i){
     if (close_data[i] < min) 
       min = close_data[i];
@@ -205,7 +202,7 @@ int main(int argc, char* argv[]){
     dist = output_occ(detect_bound, &dir);
       if (dist >= 0){
         direction =RANGE/NUM_DIR*dir - RANGE/2;
-        printf("Final Direction: %d\n", direction); 
+        printf("Final Direction: %d; distance: %d\n", direction,dist); 
         if (dist <= warning_bound)
           move_arm(fd, direction, 1);
         else 
