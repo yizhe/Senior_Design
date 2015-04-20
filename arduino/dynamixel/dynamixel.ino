@@ -28,6 +28,7 @@ towards the center of the board so that it will let you program it.
 */
 
 #define LED 13
+#define EnablePin 2
 #define SPEED 100
 
 int g_record[100][10], g_record_index, g_record_motors[10];
@@ -45,6 +46,7 @@ struct Joint
 void setup()
 {
   pinMode(LED, OUTPUT);
+  pinMode(EnablePin, OUTPUT);
   Serial.begin(9600);
   Dynamixel.begin(1000000, 2); // 1 Mbps, ignored direction pin
   Timer3.initialize(1000000);
@@ -167,6 +169,9 @@ void process_command(const char buf[])
 "    z [milliseconds]?    sleep (no argument: 1 second)\r\n"
 "    m [speed]?      set speed (default 100)\r\n"
 "\r\n"
+"    Q               start enablepin (pin2)\r\n"
+"    q               stop enablepin (pin2)\r\n"
+"\r\n"
 "    R [id]+         start recording given motors\r\n"
 "    R               stop recording and dump data\r\n"
 "    F filename      start named script\r\n"
@@ -206,6 +211,14 @@ void process_command(const char buf[])
         }
         break;
         
+      case 'Q': //output high
+          digitalWrite(EnablePin, HIGH);
+          Serial.println("Output Enabled!\n");
+          break;
+      case 'q': //output low
+          digitalWrite(EnablePin, LOW);
+          Serial.println("Output Disabled!\n");
+          break;
       case 't': // torque mode
           if (stream.available())
           {
